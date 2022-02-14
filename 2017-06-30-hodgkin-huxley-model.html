@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Hodgkin-Huxley Model Simulation in Javascript</title>
+<meta name="description" content="Interactive Javascript Simulation of the Hodgkin-Huxley Model for Action Potential Generation in the Squid Giant Axon">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" rel="stylesheet" media="screen">
+<script type="text/javascript" src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+<style>
+tr.hideRow {
+    display : none;
+}
+tr.showRow {
+  display : table-row;
+}
+</style>
+</head>
+<body>
+<div class="container bs-docs-container">
+<h2>Hodgkin-Huxley action potential simulation</h2>
+<div class="container">
+  <div id="hhplot" style="width:640px;height:480px;float:left;" class="demo-placeholder"></div>
+<div id="placeholder" style="float:left;">
+</div>
+</div>
+<script type="text/javascript">
+const vScale = 65 //scale factor for Hodgkin and Huxley's original voltage params
+const context = {
+  params: [
+    {key: "C", value: 1, min: 0.001, max: 100, desc: `C (&mu;F/cm<sup>2</sup>)`,  class: "hideRow", clickFunc: "hhRun()"},
+    {key: "GKMax", value: 36, min: 0, max: 500, desc: `G<sub>K+</sub> max (mS/cm<sup>2</sup>)`,  class: "hideRow", clickFunc: "hhRun()"},
+    {key: "GNaMax", value: 120, min: 0, max: 500, desc: `G<sub>Na+</sub> max (mS/cm<sup>2</sup>)`,  class: "hideRow", clickFunc: "hhRun()"},
+    {key: "GLMax", value: 0.3, min: 0, max: 10, desc: `G<sub>leak</sub> max (mS/cm<sup>2</sup>)`,  class: "hideRow", clickFunc: "hhRun()"},
+    {key: "EK", value: -12 - vScale, min: -100 - vScale, max: 200 - vScale, desc: `E<sub>K+</sub> (mV)`, class: "showRow", clickFunc: "hhRun()"},
+    {key: "ENa", value: 115 - vScale, min: -100 - vScale, max: 200 - vScale, desc: `E<sub>Na+</sub> (mV)`, class: "showRow", clickFunc: "hhRun()"},
+    {key: "EL", value: 10.613 - vScale, min: -100 - vScale, max: 200 - vScale, desc: `E<sub>leak</sub> (mV)`, class: "hideRow", clickFunc: "hhRun()"},
+    {key: "V0", value: 0 - vScale, min: -100 - vScale, max: 200 - vScale, desc: `V<sub>t=0</sub> (mV)`, class: "hideRow", clickFunc: "hhRun()"},
+    {key: "tStop", value: 200, min: 0, max: 2000, desc: `t<sub>stop</sub> (ms)`, class: "hideRow", clickFunc: "hhRun()"},
+    {key: "tInjStart", value: 25, min: 0, max: 2000, desc: `t<sub>InjStart</sub> (ms)`, class: "hideRow", clickFunc: "hhRun()"},
+    {key: "tInjStop", value: 175, min: 0, max: 2000, desc: `t<sub>InjStop</sub> (ms)`, class: "hideRow", clickFunc: "hhRun()"},
+    {key: "IDC", value: 7, min: 0, max: 200, desc: `I<sub>DC</sub> (nA/cm<sup>2</sup>)`,  class: "showRow", clickFunc: "hhRun()"}, //orig value:, class: "" 0
+    {key: "IRand", value: 1, min: 0, max: 200, desc: `I<sub>rand</sub> (nA/cm<sup>2</sup>)`,  class: "showRow", clickFunc: "hhRun()"}, //orig value: , class: ""35
+    {key: "Itau", value: 1, min: 0, max: 10, desc: `I<sub>&tau;</sub> (ms)`, class: "hideRow", clickFunc: "hhRun()"}
+  ]
+}
+
+const pushTable = function (context) { 
+  let ans = []
+  context.params.forEach(inp => {
+  ans.push(`<tr class=${inp.class}><td>${inp.desc}:</td><td><input type="number" id=${inp.key} min=${inp.min} max=${inp.max} value=${inp.value} onclick=${inp.clickFunc}></td></tr>`)
+    })
+  return (ans.join('\n'))
+}
+
+const tableSource = `
+<div>
+<table>
+${pushTable(context)}
+</table>
+</div>
+<div>
+<input type="checkbox" onclick="expandParams()"> <span style="color:gray">Expand parameters</span>
+</div>
+<div>
+<button name="startStopButton" onclick="hhRun()"><strong>Run</strong></button>
+</div>
+`
+
+const expandParams = function() {
+  document.querySelectorAll('tr.hideRow').forEach(el => {el.classList.toggle('showRow')})
+}
+
+document.getElementById("placeholder").innerHTML = tableSource //returns and sets the html
+</script>
+<script type="text/javascript">
+const HH = function HH(C, GKMax, GNaMax, GLMax, EK, ENa, EL, V0) {
+  this.dt = 0.025; //ms
+  this.V = V0;
+  this.Iinj = 0;
+  let n = 0.32;
+  let m = 0.05;
+  let h = 0.60;
+  let INa = 0;
+  let IK = 0;
+  let IL = 0;
+       
+  function alphaN(V) {
+    if (V===10) return alphaN(V+0.001); // 0/0 -> NaN
+    return (10-V) / (100*(Math.exp((10-V)/10)-1));
+  };
+  function betaN(V) {
+    return 0.125 * Math.exp(-V/80);
+  };
+  
+  function alphaM(V) {
+    if (V===25) return alphaM(V+0.001);  // 0/0 -> NaN
+    return (25-V) / (10 * (Math.exp((25-V)/10)-1));
+  };
+  function betaM(V) {
+    return 4 * Math.exp(-V/18)
+  };
+  
+  function alphaH(V) {
+    return 0.07*Math.exp(-V/20);
+  };
+  function betaH(V) {
+    return 1 / (Math.exp((30-V)/10)+1);
+  };
+  
+  this.step = function () {
+    const aN = alphaN(this.V);
+    const bN = betaN(this.V);
+    const aM = alphaM(this.V);
+    const bM = betaM(this.V);
+    const aH = alphaH(this.V);
+    const bH = betaH(this.V);
+    
+    const tauN = 1 / (aN + bN);
+    const tauM = 1 / (aM + bM);
+    const tauH = 1 / (aH + bH);
+    const nInf = aN * tauN;
+    const mInf = aM * tauM;
+    const hInf = aH * tauH;
+    
+    n += this.dt / tauN * (nInf - n);
+    m += this.dt / tauM * (mInf - m);
+    h += this.dt / tauH * (hInf - h);
+    INa = GNaMax * m * m * m * h * (ENa - this.V);
+    IK = GKMax * n * n * n * n * (EK - this.V);
+    IL = GLMax * (EL - this.V);
+    
+    this.V += this.dt / C * (INa + IK + IL + this.Iinj);
+  };
+};
+
+
+const hhRun = function hhRun() {
+
+  const C = parseFloat(document.getElementById("C").value);
+  const GKMax = parseFloat(document.getElementById("GKMax").value);
+  const GNaMax = parseFloat(document.getElementById("GNaMax").value);
+  const GLMax = parseFloat(document.getElementById("GLMax").value);
+  const EK = parseFloat(document.getElementById("EK").value) + vScale;
+  const ENa = parseFloat(document.getElementById("ENa").value) + vScale;
+  const EL = parseFloat(document.getElementById("EL").value) + vScale;
+  const V0 = parseFloat(document.getElementById("V0").value) + vScale;
+  const tStop = parseFloat(document.getElementById("tStop").value);
+  const tInjStart = parseFloat(document.getElementById("tInjStart").value);
+  const tInjStop = parseFloat(document.getElementById("tInjStop").value);
+  const IDC = parseFloat(document.getElementById("IDC").value);
+  const IRand = parseFloat(document.getElementById("IRand").value);
+  const Itau = parseFloat(document.getElementById("Itau").value);  
+
+  const hodgkinHuxley = new HH(C, GKMax, GNaMax, GLMax, EK, ENa, EL, V0); 
+  // var Vs = new Array(Math.floor(tStop/hodgkinHuxley.dt));
+  // var Iinj = new Array(Math.floor(tStop/hodgkinHuxley.dt));
+  const Vs = {
+    x: [],
+    y: [],
+    mode: 'lines',
+    name: 'Vm (mV)',
+    line: {
+      color: 'rgb(64, 64, 64)',
+      width: 3
+    }
+  }
+
+  const Iinj = {
+      x: [],
+      y: [],
+      mode: 'lines',
+      yaxis: 'y2',
+      name: 'I (nA)',
+      line: {
+        color: 'rgb(0, 128, 255)',
+        width: 1
+      }
+    }
+
+  // sample rate of simulation data to generate plotting data
+  const plotSampleRate = Math.ceil(tStop/2000/hodgkinHuxley.dt);
+  
+  const plotLayout = {
+    xaxis: {
+      title: 'Time (ms)'
+    },
+    yaxis: {
+      title: 'Membrane potential (mV)'
+      //, range: [-100,100]
+    },
+    yaxis2: {
+      title: 'Injected current (nA)',
+      overlaying: 'y',
+      side: 'right'
+      //, range: [-5,10]
+    },
+    legend: {
+      "orientation": "h",
+      xanchor: "center",
+      y: 1.1,
+      x: 0.5
+      },
+  };
+
+  let i=0;
+  for (let t=0; t<tStop; t+=hodgkinHuxley.dt) {
+    if (t>tInjStart && t<tInjStop) {
+      rawInj = IDC + (IRand * 2 * (Math.random()-0.5));
+    } else {
+      rawInj = 0;
+    }
+    hodgkinHuxley.Iinj += hodgkinHuxley.dt/Itau * (rawInj - hodgkinHuxley.Iinj);
+    hodgkinHuxley.step();
+    // console.log("step: " + i + ", t: " + t + ", V: " + hodgkinHuxley.V)
+    if (i == plotSampleRate) {
+      Vs.y.push(hodgkinHuxley.V - vScale);
+      Vs.x.push(t);
+      Iinj.y.push(hodgkinHuxley.Iinj);
+      Iinj.x.push(t);
+      i=0;
+    }
+    i++;
+  }
+  
+  Plotly.newPlot('hhplot', [Vs,Iinj], plotLayout);
+
+};
+
+hhRun()
+
+// Javascript code implementation originally from Hubert Eichner, 2014 (http://fneuron-mc.myselph.de/hodgkinHuxley.html, hubert@myselph.de) released under the free and open source MIT License <https://opensource.org/licenses/MIT>.
+// Parameters were from C. Koch's book Biophysics of Computation, chp 6
+// The HH model consists of 3 channel types: voltage dependent Na+ and K+ conductances and a voltage-independent leakage channel conductance.
+// The differential equations for the three gating variables {n,m,h: voltage- and time-dependence of Na+ channel opening for Na+ (m,h) and for K+ channels (n); these gating variables together describe the probability that a Na+ or K+ voltage-dependent type channel is open} and the transmembrane current equation {I(t) = I_c(t)+sum(I_k(t)), where I_c is the capacitive current and sum(I_k) is the sum of the component currents described by the gNa, gK, gL conductances and their reversal potentials ENa, EK, EL:  I_k = gL*(V-EL) + gK*n^4*(V-EK) + gNa*m^3*h*(V-ENa)} are solved using the first-order Runge-Kutta/forward Euler method for discretization with a time step of 0.025ms.
+// Injected current consists of a DC (IDC) and a random component (uniform distribution (-1; 1) scaled by IRand) and is lowpass-filtered (1st order RC) with Itau.
+//Hodgkin and Huxley scaled the original voltage parameters so that the resting membrane potential (V0) would be zero. This simulation scales the input and output voltage values (ENa, EK, V0, and EL (Vrest)) so that they are at the familiar known values used today. Learn more at http://icwww.epfl.ch/~gerstner/SPNM/node14.html
+</script>
+<div>
+A simulation of action potential generation in the squid giant axon based on Hodgkin and Huxley's model (<a href="https://www.ncbi.nlm.nih.gov/pmc/articles/PMC1392413/"><em>J. Physiol</em>, 1952</a>). ECMAScript/Javascript code adapted from implementation by Hubert Eichner (c) 2014, <a href="https://choosealicense.com/licenses/mit/">MIT License</a>.
+</div>
+</div>   
+</body>
+</html>
