@@ -90,7 +90,7 @@ class neuron:
 
 
 if __name__ == "__main__":
-    n = neuron()
+    n = neuron(inj_curr=3)
     v, i, t = n.run_hh_sim()
 
 
