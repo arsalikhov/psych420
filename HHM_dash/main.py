@@ -4,7 +4,7 @@ import numpy as np
 import random
 
 class neuron:    
-    def __init__(self):        
+    def __init__(self, inj_curr):        
         self.dt = 0.01
         self.max_t = 300
         self.init_t = 0.0
@@ -17,6 +17,7 @@ class neuron:
         self.gk = 36.0
         self.el = -64.387
         self.gl = 0.30
+        self.inj_curr = inj_curr
 
     def alpha_n(self, volt):
         return((0.01 * (volt+55))/(1.0 - (np.exp(-0.1*(55 + volt)))))
@@ -60,10 +61,10 @@ class neuron:
         m = []
         n =[]
         h = []
-        noise = round(random.uniform(60, 80), 2)
+        noise = round(np.random.normal(self.inj_curr*10, 1), 2)
         for idt in range(int(self.max_t/self.dt)):
-            if idt%100 == 0:
-                noise = round(random.uniform(60, 80), 2)
+            if idt%50 == 0:
+                noise = round(np.random.normal(self.inj_curr*10, 1), 2)
 
             time.append(self.dt*idt)
             if time[idt] <= self.start_time or time[idt] >= self.stop_time:
