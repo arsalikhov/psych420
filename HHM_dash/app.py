@@ -1,7 +1,7 @@
 # Run this app with `python app.py` and
 # visit http://127.0.0.1:8050/ in your web browser.
 import dash
-from dash import Dash, html, dcc
+# from dash import Dash, html, dcc
 import plotly.graph_objects as go
 import pandas as pd
 import numpy as np
@@ -9,7 +9,7 @@ from main import neuron
 from plotly.subplots import make_subplots
 from dash.dependencies import Input, Output
 
-app = Dash(__name__)
+app = dash.Dash(__name__)
 
 def run_server(self,
                port=5051,
@@ -18,26 +18,26 @@ def run_server(self,
                **flask_run_options):
     self.server.run(port=port, debug=debug, **flask_run_options)
 
-app.layout = html.Div(className="row", children=[
-    html.Div(children=[
-        html.H1(children='Hodgkin–Huxley model of a neuron', style={'textAlign': 'center'}),
+app.layout = dash.html.Div(className="row", children=[
+    dash.html.Div(children=[
+        dash.html.H1(children='Hodgkin–Huxley model of a neuron', style={'textAlign': 'center'}),
 
-        html.Div(children='''
+        dash.html.Div(children='''
             Simulation of a squid giant axon using Hodgkin–Huxley model.
         ''', style={'textAlign': 'center'}),
-        html.Div(children='''
+        dash.html.Div(children='''
             Adjust the slider on the right in order to change the current applied to the patch.
         ''', style={'textAlign': 'center'})
         ]),
-    html.Div(className="row", children=[  
-        html.Div(className='six columns',children=[
-            dcc.Graph(
+    dash.html.Div(className="row", children=[  
+        dash.html.Div(className='six columns',children=[
+            dash.dcc.Graph(
                 id='graph_with_slider',
                 style={'width': '150vh', 'height': '69vh'},
             )], style=dict(width='80%')),
 
-        html.Div(className='six columns',children = [
-            dcc.Slider(
+        dash.html.Div(className='six columns',children = [
+            dash.dcc.Slider(
                 id="slider-circular", min=0, max=3,
                 marks={i: str(i) for i in range(4)},
                 value=3,
@@ -91,4 +91,4 @@ def update_figure(current):
     return fig
 
 if __name__ == '__main__':
-    app.run_server(debug=True, port = 8051)
+    app.run_server(debug=True, port = 8050)
